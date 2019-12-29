@@ -13,7 +13,7 @@ const (
 	Samples
 	Resizable
 
-	// goxjs/glfw-specific hints for WebGL.
+	// maja42/glfw-specific hints for WebGL.
 	PremultipliedAlpha
 	PreserveDrawingBuffer
 	PreferLowPowerToHighPerformance

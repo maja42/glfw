@@ -3,32 +3,45 @@
 package glfw
 
 import (
+	"github.com/go-gl/glfw/v3.3/glfw"
 	"io"
 	"os"
-	"runtime"
-
-	"github.com/go-gl/glfw/v3.3/glfw"
+	"strings"
 )
 
-func init() {
-	runtime.LockOSThread()
-}
-
+var enqueue func(blocking bool, fn func())
 var contextWatcher ContextWatcher
+
+type RenderThread interface {
+	Enqueue(blocking bool, fn func())
+}
 
 // Init initializes the library.
 //
+// Expects a render thread to execute commands.
 // A valid ContextWatcher must be provided. It gets notified when context becomes current or detached.
-// It should be provided by the GL bindings you are using, so you can do glfw.Init(gl.ContextWatcher).
-func Init(cw ContextWatcher) error {
+// It should be provided by the GL bindings you are using, so you can do glfw.Init(renderThread, gl.ContextWatcher).
+func Init(renderThread RenderThread, cw ContextWatcher) error {
 	contextWatcher = cw
-	return glfw.Init()
+	enqueue = renderThread.Enqueue
+
+	var err error
+	enqueue(true, func() {
+		err = glfw.Init()
+	})
+	return err
 }
 
+// Terminate destroys all remaining windows, frees any allocated resources and de-initializes the library.
 func Terminate() {
-	glfw.Terminate()
+	enqueue(false, func() {
+		glfw.Terminate()
+	})
 }
 
+// CreateWindow creates a window and its associated context. Most of the options
+// controlling how the window and its context should be created are specified
+// through Hint.
 func CreateWindow(width, height int, title string, monitor *Monitor, share *Window) (*Window, error) {
 	var m *glfw.Monitor
 	if monitor != nil {
@@ -39,7 +52,11 @@ func CreateWindow(width, height int, title string, monitor *Monitor, share *Wind
 		s = share.Window
 	}
 
-	w, err := glfw.CreateWindow(width, height, title, m, s)
+	var w *glfw.Window
+	var err error
+	enqueue(true, func() {
+		w, err = glfw.CreateWindow(width, height, title, m, s)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -49,20 +66,117 @@ func CreateWindow(width, height int, title string, monitor *Monitor, share *Wind
 	return window, err
 }
 
+// SwapInterval sets the swap interval for the current context, i.e. the number
+// of screen updates to wait before swapping the buffers of a window and
+// returning from SwapBuffers. This is sometimes called
+// 'vertical synchronization', 'vertical retrace synchronization' or 'vsync'.
 func SwapInterval(interval int) {
-	glfw.SwapInterval(interval)
+	enqueue(false, func() {
+		glfw.SwapInterval(interval)
+	})
 }
 
+// MakeContextCurrent makes the context of the window current.
 func (w *Window) MakeContextCurrent() {
-	w.Window.MakeContextCurrent()
-	// In reality, context is available on each platform via GetGLXContext, GetWGLContext, GetNSGLContext, etc.
-	// Pretend it is not available and pass nil, since it's not actually needed at this time.
-	contextWatcher.OnMakeCurrent(nil)
+	enqueue(false, func() {
+		w.Window.MakeContextCurrent()
+		// In reality, context is available on each platform via GetGLXContext, GetWGLContext, GetNSGLContext, etc.
+		// Pretend it is not available and pass nil, since it's not actually needed at this time.
+		contextWatcher.OnMakeCurrent(nil)
+	})
 }
 
 func DetachCurrentContext() {
-	glfw.DetachCurrentContext()
-	contextWatcher.OnDetach()
+	enqueue(false, func() {
+		glfw.DetachCurrentContext()
+		contextWatcher.OnDetach()
+	})
+}
+
+func (w *Window) SwapBuffers() {
+	enqueue(false, func() {
+		w.Window.SwapBuffers()
+	})
+}
+
+func (w *Window) Destroy() {
+	enqueue(false, w.Window.Destroy)
+}
+
+func (w *Window) SetTitle(title string) {
+	enqueue(false, func() {
+		w.Window.SetTitle(title)
+	})
+}
+
+func (w *Window) SetPos(xpos, ypos int) {
+	enqueue(false, func() {
+		w.Window.SetPos(xpos, ypos)
+	})
+}
+
+func (w *Window) SetSize(width, height int) {
+	enqueue(false, func() {
+		w.Window.SetSize(width, height)
+	})
+}
+
+func (w *Window) GetContentScale() (float32, float32) {
+	var x, y float32
+	enqueue(true, func() {
+		x, y = w.Window.GetContentScale()
+	})
+	return x, y
+}
+
+func (w *Window) GetOpacity() float32 {
+	var o float32
+	enqueue(true, func() {
+		o = w.Window.GetOpacity()
+	})
+	return o
+}
+
+func (w *Window) SetOpacity(opacity float32) {
+	enqueue(false, func() {
+		w.Window.SetOpacity(opacity)
+	})
+}
+
+func (w *Window) Iconify() {
+	enqueue(false, w.Window.Iconify)
+}
+
+func (w *Window) Restore() {
+	enqueue(false, w.Window.Restore)
+}
+
+func (w *Window) Show() {
+	enqueue(false, w.Window.Show)
+}
+
+func (w *Window) Hide() {
+	enqueue(false, w.Window.Hide)
+}
+
+func (w *Window) SetAttrib(attrib Hint, value int) {
+	enqueue(false, func() {
+		w.Window.SetAttrib(glfw.Hint(attrib), value)
+	})
+}
+
+func (w *Window) SetClipboardString(str string) {
+	enqueue(false, func() {
+		w.Window.SetClipboardString(str)
+	})
+}
+
+func (w *Window) GetClipboardString() string {
+	var s string
+	enqueue(false, func() {
+		s = w.Window.GetClipboardString()
+	})
+	return s
 }
 
 type Window struct {
@@ -74,12 +188,17 @@ type Monitor struct {
 }
 
 func GetPrimaryMonitor() *Monitor {
-	m := glfw.GetPrimaryMonitor()
+	var m *glfw.Monitor
+	enqueue(true, func() {
+		m = glfw.GetPrimaryMonitor()
+	})
 	return &Monitor{Monitor: m}
 }
 
 func PollEvents() {
-	glfw.PollEvents()
+	enqueue(false, func() {
+		glfw.PollEvents()
+	})
 }
 
 type CursorPosCallback func(w *Window, xpos float64, ypos float64)
@@ -87,26 +206,6 @@ type CursorPosCallback func(w *Window, xpos float64, ypos float64)
 func (w *Window) SetCursorPosCallback(cbfun CursorPosCallback) (previous CursorPosCallback) {
 	wrappedCbfun := func(_ *glfw.Window, xpos float64, ypos float64) {
 		cbfun(w, xpos, ypos)
-	}
-
-	p := w.Window.SetCursorPosCallback(wrappedCbfun)
-	_ = p
-
-	// TODO: Handle previous.
-	return nil
-}
-
-type MouseMovementCallback func(w *Window, xpos float64, ypos float64, xdelta float64, ydelta float64)
-
-var lastMousePos [2]float64 // HACK.
-
-// TODO: For now, this overrides SetCursorPosCallback; should support both.
-func (w *Window) SetMouseMovementCallback(cbfun MouseMovementCallback) (previous MouseMovementCallback) {
-	lastMousePos[0], lastMousePos[1] = w.Window.GetCursorPos()
-	wrappedCbfun := func(_ *glfw.Window, xpos float64, ypos float64) {
-		xdelta, ydelta := xpos-lastMousePos[0], ypos-lastMousePos[1]
-		lastMousePos[0], lastMousePos[1] = xpos, ypos
-		cbfun(w, xpos, ypos, xdelta, ydelta)
 	}
 
 	p := w.Window.SetCursorPosCallback(wrappedCbfun)
@@ -329,6 +428,139 @@ const (
 	KeyMenu         = Key(glfw.KeyMenu)
 )
 
+var keyNames = map[Key]string{
+	// Printable characters
+	KeyA:            "A",
+	KeyB:            "B",
+	KeyC:            "C",
+	KeyD:            "D",
+	KeyE:            "E",
+	KeyF:            "F",
+	KeyG:            "G",
+	KeyH:            "H",
+	KeyI:            "I",
+	KeyJ:            "J",
+	KeyK:            "K",
+	KeyL:            "L",
+	KeyM:            "M",
+	KeyN:            "N",
+	KeyO:            "O",
+	KeyP:            "P",
+	KeyQ:            "Q",
+	KeyR:            "R",
+	KeyS:            "S",
+	KeyT:            "T",
+	KeyU:            "U",
+	KeyV:            "V",
+	KeyW:            "W",
+	KeyX:            "X",
+	KeyY:            "Y",
+	KeyZ:            "Z",
+	Key1:            "1",
+	Key2:            "2",
+	Key3:            "3",
+	Key4:            "4",
+	Key5:            "5",
+	Key6:            "6",
+	Key7:            "7",
+	Key8:            "8",
+	Key9:            "9",
+	Key0:            "0",
+	KeySpace:        "SPACE",
+	KeyMinus:        "MINUS",
+	KeyEqual:        "EQUAL",
+	KeyLeftBracket:  "LEFT BRACKET",
+	KeyRightBracket: "RIGHT BRACKET",
+	KeyBackslash:    "BACKSLASH",
+	KeySemicolon:    "SEMICOLON",
+	KeyApostrophe:   "APOSTROPHE",
+	KeyGraveAccent:  "GRAVE ACCENT",
+	KeyComma:        "COMMA",
+	KeyPeriod:       "PERIOD",
+	KeySlash:        "SLASH",
+	KeyWorld1:       "WORLD 1",
+	KeyWorld2:       "WORLD 2",
+	// Function keys
+	KeyEscape:       "ESCAPE",
+	KeyF1:           "F1",
+	KeyF2:           "F2",
+	KeyF3:           "F3",
+	KeyF4:           "F4",
+	KeyF5:           "F5",
+	KeyF6:           "F6",
+	KeyF7:           "F7",
+	KeyF8:           "F8",
+	KeyF9:           "F9",
+	KeyF10:          "F10",
+	KeyF11:          "F11",
+	KeyF12:          "F12",
+	KeyF13:          "F13",
+	KeyF14:          "F14",
+	KeyF15:          "F15",
+	KeyF16:          "F16",
+	KeyF17:          "F17",
+	KeyF18:          "F18",
+	KeyF19:          "F19",
+	KeyF20:          "F20",
+	KeyF21:          "F21",
+	KeyF22:          "F22",
+	KeyF23:          "F23",
+	KeyF24:          "F24",
+	KeyF25:          "F25",
+	KeyUp:           "UP",
+	KeyDown:         "DOWN",
+	KeyLeft:         "LEFT",
+	KeyRight:        "RIGHT",
+	KeyLeftShift:    "LEFT SHIFT",
+	KeyRightShift:   "RIGHT SHIFT",
+	KeyLeftControl:  "LEFT CONTROL",
+	KeyRightControl: "RIGHT CONTROL",
+	KeyLeftAlt:      "LEFT ALT",
+	KeyRightAlt:     "RIGHT ALT",
+	KeyTab:          "TAB",
+	KeyEnter:        "ENTER",
+	KeyBackspace:    "BACKSPACE",
+	KeyInsert:       "INSERT",
+	KeyDelete:       "DELETE",
+	KeyPageUp:       "PAGE UP",
+	KeyPageDown:     "PAGE DOWN",
+	KeyHome:         "HOME",
+	KeyEnd:          "END",
+	KeyKP0:          "KEYPAD 0",
+	KeyKP1:          "KEYPAD 1",
+	KeyKP2:          "KEYPAD 2",
+	KeyKP3:          "KEYPAD 3",
+	KeyKP4:          "KEYPAD 4",
+	KeyKP5:          "KEYPAD 5",
+	KeyKP6:          "KEYPAD 6",
+	KeyKP7:          "KEYPAD 7",
+	KeyKP8:          "KEYPAD 8",
+	KeyKP9:          "KEYPAD 9",
+	KeyKPDivide:     "KEYPAD DIVIDE",
+	KeyKPMultiply:   "KEYPAD MULTPLY",
+	KeyKPSubtract:   "KEYPAD SUBTRACT",
+	KeyKPAdd:        "KEYPAD ADD",
+	KeyKPDecimal:    "KEYPAD DECIMAL",
+	KeyKPEqual:      "KEYPAD EQUAL",
+	KeyKPEnter:      "KEYPAD ENTER",
+	KeyPrintScreen:  "PRINT SCREEN",
+	KeyNumLock:      "NUM LOCK",
+	KeyCapsLock:     "CAPS LOCK",
+	KeyScrollLock:   "SCROLL LOCK",
+	KeyPause:        "PAUSE",
+	KeyLeftSuper:    "LEFT SUPER",
+	KeyRightSuper:   "RIGHT SUPER",
+	KeyMenu:         "MENU",
+}
+
+func (k Key) String() string {
+	name, ok := keyNames[k]
+	if !ok {
+		return "UNKNOWN"
+	}
+	return name
+}
+
 type MouseButton glfw.MouseButton
 
 const (
@@ -341,6 +573,19 @@ const (
 	MouseButtonMiddle = MouseButton(glfw.MouseButtonMiddle)
 )
 
+func (b MouseButton) String() string {
+	switch b {
+	case MouseButtonLeft:
+		return "LEFT"
+	case MouseButtonRight:
+		return "RIGHT"
+	case MouseButtonMiddle:
+		return "MIDDLE"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 type Action glfw.Action
 
 const (
@@ -348,6 +593,19 @@ const (
 	Press   = Action(glfw.Press)
 	Repeat  = Action(glfw.Repeat)
 )
+
+func (a Action) String() string {
+	switch a {
+	case Press:
+		return "PRESSED"
+	case Release:
+		return "RELEASED"
+	case Repeat:
+		return "REPEATED"
+	default:
+		return "UNKNOWN"
+	}
+}
 
 type InputMode int
 
@@ -372,6 +630,26 @@ const (
 	ModSuper   = ModifierKey(glfw.ModSuper)
 )
 
+func (m ModifierKey) String() string {
+	if m == 0 {
+		return "[]"
+	}
+	str := []string{}
+	if m&ModShift != 0 {
+		str = append(str, "SHIFT")
+	}
+	if m&ModControl != 0 {
+		str = append(str, "CONTROL")
+	}
+	if m&ModAlt != 0 {
+		str = append(str, "ALT")
+	}
+	if m&ModSuper != 0 {
+		str = append(str, "SUPER")
+	}
+	return "[" + strings.Join(str, ",") + "]"
+}
+
 // Open opens a named asset. It's the caller's responsibility to close it when done.
 //
 // For now, assets are read directly from the current working directory.
@@ -382,7 +660,9 @@ func Open(name string) (io.ReadCloser, error) {
 // ---
 
 func WaitEvents() {
-	glfw.WaitEvents()
+	enqueue(true, func() {
+		glfw.WaitEvents()
+	})
 }
 
 func PostEmptyEvent() {
@@ -390,7 +670,9 @@ func PostEmptyEvent() {
 }
 
 func DefaultWindowHints() {
-	glfw.DefaultWindowHints()
+	enqueue(false, func() {
+		glfw.DefaultWindowHints()
+	})
 }
 
 type CloseCallback func(w *Window)
@@ -443,20 +725,6 @@ func (w *Window) SetCursorEnterCallback(cbfun CursorEnterCallback) (previous Cur
 	}
 
 	p := w.Window.SetCursorEnterCallback(wrappedCbfun)
-	_ = p
-
-	// TODO: Handle previous.
-	return nil
-}
-
-type CharModsCallback func(w *Window, char rune, mods ModifierKey)
-
-func (w *Window) SetCharModsCallback(cbfun CharModsCallback) (previous CharModsCallback) {
-	wrappedCbfun := func(_ *glfw.Window, char rune, mods glfw.ModifierKey) {
-		cbfun(w, char, ModifierKey(mods))
-	}
-
-	p := w.Window.SetCharModsCallback(wrappedCbfun)
 	_ = p
 
 	// TODO: Handle previous.

@@ -13,7 +13,7 @@ const (
 	Samples     = Hint(glfw.Samples)
 	Resizable   = Hint(glfw.Resizable)
 
-	// These hints used for WebGL contexts, ignored on desktop.
+	// These hints are used for WebGL contexts, ignored on desktop.
 	PremultipliedAlpha = noopHint
 	PreserveDrawingBuffer
 	PreferLowPowerToHighPerformance
