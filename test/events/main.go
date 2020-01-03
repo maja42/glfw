@@ -171,7 +171,6 @@ func main() {
 	window.SetScrollCallback(ScrollCallback)
 	window.SetKeyCallback(KeyCallback)
 	window.SetCharCallback(CharCallback)
-	window.SetCharModsCallback(CharModsCallback)
 	window.SetDropCallback(DropCallback)
 
 	fmt.Println("Main loop starting.")
