@@ -2,11 +2,13 @@
 
 package glfw
 
+import "C"
 import (
-	"github.com/go-gl/glfw/v3.3/glfw"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/go-gl/glfw/v3.3/glfw"
 )
 
 var enqueue func(blocking bool, fn func())
@@ -159,10 +161,31 @@ func (w *Window) Hide() {
 	enqueue(false, w.Window.Hide)
 }
 
+// SetAttrib function sets the value of an attribute of the specified window.
+//
+// The supported attributes are Decorated, Resizeable, Floating and AutoIconify.
+//
+// Some of these attributes are ignored for full screen windows. The new value
+// will take effect if the window is later made windowed.
+//
+// Some of these attributes are ignored for windowed mode windows. The new value
+// will take effect if the window is later made full screen.
+//
+// This function may only be called from the main thread.
 func (w *Window) SetAttrib(attrib Hint, value int) {
 	enqueue(false, func() {
 		w.Window.SetAttrib(glfw.Hint(attrib), value)
 	})
+}
+
+// GetAttrib returns an attribute of the window. There are many attributes,
+// some related to the window and others to its context.
+func (w *Window) GetAttrib(attrib Hint) int {
+	var val int
+	enqueue(true, func() {
+		val = w.Window.GetAttrib(glfw.Hint(attrib))
+	})
+	return val
 }
 
 func (w *Window) SetClipboardString(str string) {
