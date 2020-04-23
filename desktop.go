@@ -712,6 +712,46 @@ func (w *Window) SetCloseCallback(cbfun CloseCallback) (previous CloseCallback) 
 	return nil
 }
 
+// MaximizeCallback is the function signature for window maximize callback functions.
+type MaximizeCallback func(w *Window, iconified bool)
+
+// SetMaximizeCallback sets the maximization callback of the specified window,
+// which is called when the window is maximized or restored.
+//
+// This function must only be called from the main thread.
+func (w *Window) SetMaximizeCallback(cbfun MaximizeCallback) MaximizeCallback {
+	wrappedCbfun := func(_ *glfw.Window, iconified bool) {
+		cbfun(w, iconified)
+	}
+
+	p := w.Window.SetMaximizeCallback(wrappedCbfun)
+	_ = p
+
+	// TODO: Handle previous.
+	return nil
+}
+
+// ContentScaleCallback is the function signature for window content scale
+// callback functions.
+type ContentScaleCallback func(w *Window, x, y float32)
+
+// SetContentScaleCallback function sets the window content scale callback of
+// the specified window, which is called when the content scale of the specified
+// window changes.
+//
+// This function must only be called from the main thread.
+func (w *Window) SetContentScaleCallback(cbfun ContentScaleCallback) ContentScaleCallback {
+	wrappedCbfun := func(_ *glfw.Window, x, y float32) {
+		cbfun(w, x, y)
+	}
+
+	p := w.Window.SetContentScaleCallback(wrappedCbfun)
+	_ = p
+
+	// TODO: Handle previous.
+	return nil
+}
+
 type RefreshCallback func(w *Window)
 
 func (w *Window) SetRefreshCallback(cbfun RefreshCallback) (previous RefreshCallback) {
