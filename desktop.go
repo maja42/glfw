@@ -219,7 +219,7 @@ func GetPrimaryMonitor() *Monitor {
 }
 
 func PollEvents() {
-	enqueue(false, func() {
+	enqueue(true, func() {
 		glfw.PollEvents()
 	})
 }
